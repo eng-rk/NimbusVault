@@ -61,9 +61,19 @@ app.use("/api/folders",  folderRoutes);
 app.use("/api/activity", activityRoutes);
 
 // health check
-app.get("/", (req, res) => {
+app.get("/api/health", (req, res) => {
     res.json({ msg: "NimbusVault API is running" });
 });
+
+// Serve frontend assets when the React build exists.
+const clientBuildPath = path.join(__dirname, "frontend", "dist");
+if (process.env.NODE_ENV === "production") {
+    app.use(express.static(clientBuildPath));
+
+    app.get("*", (req, res) => {
+        res.sendFile(path.join(clientBuildPath, "index.html"));
+    });
+}
 
 // ── Global Error Handler ──────────────────────────────────────────
 const errorMiddleware = require("./Middleware/errorMiddleware");
