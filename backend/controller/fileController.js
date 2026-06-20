@@ -109,9 +109,6 @@ const uploadFile = async (req, res) => {
         const originalName = req.file.originalname;
         const storedName = req.file.filename;
 
-        // Determine storage limit (15 GB)
-        const STORAGE_LIMIT_BYTES = parseInt(process.env.STORAGE_LIMIT_BYTES) || 16106127360;
-
         let chargeUserId = userId;
         // Storage deduction check
         if (folderId && folderId !== "null" && folderId !== "undefined") {
@@ -131,10 +128,15 @@ const uploadFile = async (req, res) => {
             return res.status(404).json({ msg: "Storage charging account not found" });
         }
 
-        if (chargingUser.storageUsed + fileSize > STORAGE_LIMIT_BYTES) {
+        // Determine storage limit (15 GB for Free, 100 GB for Premium)
+        const isSubscribed = chargingUser.isSubscribed;
+        const limitBytes = isSubscribed ? 107374182400 : 16106127360;
+        const limitText = isSubscribed ? "100 GB" : "15 GB";
+
+        if (chargingUser.storageUsed + fileSize > limitBytes) {
             // remove uploaded file
             fs.unlinkSync(req.file.path);
-            return res.status(400).json({ msg: "Storage Limit Exceeded (15 GB max)" });
+            return res.status(400).json({ msg: `Storage Limit Exceeded (${limitText} max)` });
         }
 
         // create

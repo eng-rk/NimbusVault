@@ -118,8 +118,91 @@ const googleSuccess = async (req, res) => {
     }
 };
 
+const getProfile = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select("-password");
+        if (!user) {
+            return res.status(404).json({ msg: "User not found" });
+        }
+        res.status(200).json({
+            msg: "User profile fetched successfully",
+            data: user
+        });
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ msg: error.message });
+    }
+};
+
+const subscribeUser = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ msg: "User not found" });
+        }
+
+        user.isSubscribed = true;
+        user.subscriptionPlan = "premium";
+        user.subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+        await user.save();
+
+        res.status(200).json({
+            msg: "Subscribed to Premium plan successfully",
+            data: {
+                id: user._id,
+                userName: user.userName,
+                email: user.email,
+                role: user.role,
+                avatar: user.avatar,
+                storageUsed: user.storageUsed,
+                isSubscribed: user.isSubscribed,
+                subscriptionPlan: user.subscriptionPlan,
+                subscriptionExpiresAt: user.subscriptionExpiresAt
+            }
+        });
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ msg: error.message });
+    }
+};
+
+const cancelSubscriptionUser = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ msg: "User not found" });
+        }
+
+        user.isSubscribed = false;
+        user.subscriptionPlan = "free";
+        user.subscriptionExpiresAt = null;
+        await user.save();
+
+        res.status(200).json({
+            msg: "Subscription cancelled successfully",
+            data: {
+                id: user._id,
+                userName: user.userName,
+                email: user.email,
+                role: user.role,
+                avatar: user.avatar,
+                storageUsed: user.storageUsed,
+                isSubscribed: user.isSubscribed,
+                subscriptionPlan: user.subscriptionPlan,
+                subscriptionExpiresAt: user.subscriptionExpiresAt
+            }
+        });
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ msg: error.message });
+    }
+};
+
 module.exports = {
     register,
     login,
-    googleSuccess
+    googleSuccess,
+    getProfile,
+    subscribeUser,
+    cancelSubscriptionUser
 };

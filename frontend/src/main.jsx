@@ -33,7 +33,11 @@ import {
   Sun,
   ArrowLeft,
   RefreshCcw,
-  FolderOpen
+  FolderOpen,
+  CreditCard,
+  Check,
+  Shield,
+  Crown
 } from "lucide-react";
 import "./styles.css";
 import {
@@ -59,7 +63,10 @@ import {
   inviteToFolderApi,
   generateFolderInviteLinkApi,
   fetchPublicFolderApi,
-  fetchActivitiesApi
+  fetchActivitiesApi,
+  fetchUserProfileApi,
+  subscribeUserApi,
+  cancelSubscriptionUserApi
 } from "./api";
 
 const STORAGE_LIMIT = 15 * 1024 * 1024 * 1024; // 15 GB
@@ -190,7 +197,7 @@ function App() {
       </div>
 
       {user ? (
-        <Dashboard user={user} logout={logout} theme={theme} setTheme={setTheme} triggerToast={triggerToast} />
+        <Dashboard user={user} setUser={setUser} logout={logout} theme={theme} setTheme={setTheme} triggerToast={triggerToast} />
       ) : (
         <Auth onAuth={(userData) => {
           setUser(userData);
@@ -340,7 +347,7 @@ function Auth({ onAuth, triggerToast }) {
 }
 
 /* ─── MAIN DASHBOARD ─── */
-function Dashboard({ user, logout, theme, setTheme, triggerToast }) {
+function Dashboard({ user, setUser, logout, theme, setTheme, triggerToast }) {
   const [folders, setFolders] = useState([]);
   const [files, setFiles] = useState([]);
   const [activities, setActivities] = useState([]);
@@ -349,6 +356,8 @@ function Dashboard({ user, logout, theme, setTheme, triggerToast }) {
   const [layoutMode, setLayoutMode] = useState("grid"); // grid or list
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+
+  const fileInputRef = useRef(null);
 
   // Multi-upload progress tray state
   const [uploadList, setUploadList] = useState([]); // { id, name, progress }
@@ -376,6 +385,12 @@ function Dashboard({ user, logout, theme, setTheme, triggerToast }) {
   const [pendingDownloadFile, setPendingDownloadFile] = useState(null);
   const [downloadPassword, setDownloadPassword] = useState("");
 
+  // Custom confirm dialog (replaces native confirm())
+  const [confirmDialog, setConfirmDialog] = useState(null); // { title, message, onConfirm }
+
+  // Custom rename modal (replaces native prompt())
+  const [renameModal, setRenameModal] = useState(null); // { file, newName }
+
   // Folder share/invite modal
   const [shareFolderItem, setShareFolderItem] = useState(null);
   const [folderInviteForm, setFolderInviteForm] = useState({ email: "", access: "view" });
@@ -400,6 +415,11 @@ function Dashboard({ user, logout, theme, setTheme, triggerToast }) {
 
       const activityRes = await fetchActivitiesApi();
       setActivities(activityRes.data.data);
+
+      // Dynamically fetch and sync the latest user profile details (storageUsed, isSubscribed)
+      const profileRes = await fetchUserProfileApi();
+      setUser(profileRes.data.data);
+      localStorage.setItem("user", JSON.stringify(profileRes.data.data));
     } catch (error) {
       console.error(error);
       triggerToast("Error retrieving Vault data", "error");
@@ -417,12 +437,9 @@ function Dashboard({ user, logout, theme, setTheme, triggerToast }) {
     return () => window.removeEventListener("nimbus-reload", handleReload);
   }, [activeTab, currentFolder, searchQuery, categoryFilter]);
 
-  // Compute storage used locally based on files
-  const currentStorageUsed = useMemo(() => {
-    // Return storageUsed computed by backend (on user object) or sum of files
-    // Let's summarize owned non-trashed files size
-    return files.filter(f => f.ownerId === user.id && !f.isTrashed).reduce((sum, f) => sum + f.size, 0);
-  }, [files, user]);
+  const currentStorageUsed = user?.storageUsed || 0;
+  const storageLimit = user?.isSubscribed ? 100 * 1024 * 1024 * 1024 : 15 * 1024 * 1024 * 1024;
+  const storageLimitGBText = user?.isSubscribed ? "100.0 GB" : "15.0 GB";
 
   // ─── FOLDER CRUD HANDLERS ───
   const handleSaveFolder = async (e) => {
@@ -463,18 +480,24 @@ function Dashboard({ user, logout, theme, setTheme, triggerToast }) {
     setShowFolderModal(true);
   };
 
-  const handleDeleteFolder = async (folder) => {
-    if (!confirm(`Trash folder "${folder.name}" and all files inside?`)) return;
-    try {
-      await deleteFolderApi(folder._id);
-      triggerToast("Folder relocated to Trash bin");
-      if (currentFolder?._id === folder._id) {
-        setCurrentFolder(null);
+  const handleDeleteFolder = (folder) => {
+    setConfirmDialog({
+      title: "Delete Folder",
+      message: `Trash folder "${folder.name}" and all files inside?`,
+      onConfirm: async () => {
+        try {
+          await deleteFolderApi(folder._id);
+          triggerToast("Folder relocated to Trash bin");
+          if (currentFolder?._id === folder._id) {
+            setCurrentFolder(null);
+          }
+          loadData();
+        } catch (error) {
+          triggerToast("Error removing folder", "error");
+        }
+        setConfirmDialog(null);
       }
-      loadData();
-    } catch (error) {
-      triggerToast("Error removing folder", "error");
-    }
+    });
   };
 
   // ─── FILE HANDLERS ───
@@ -545,17 +568,23 @@ function Dashboard({ user, logout, theme, setTheme, triggerToast }) {
     }
   };
 
-  const handleRenameFile = async (file) => {
-    const newName = prompt("Enter new filename key:", file.originalName);
-    if (!newName || newName === file.originalName) return;
+  const handleRenameFile = (file) => {
+    setRenameModal({ file, newName: file.originalName });
+  };
 
+  const handleRenameSubmit = async () => {
+    if (!renameModal || !renameModal.newName.trim() || renameModal.newName === renameModal.file.originalName) {
+      setRenameModal(null);
+      return;
+    }
     try {
-      await renameFileApi(file._id, newName);
+      await renameFileApi(renameModal.file._id, renameModal.newName);
       triggerToast("Resource name revised", "success");
       loadData();
     } catch (error) {
       triggerToast("Failed to rename file", "error");
     }
+    setRenameModal(null);
   };
 
   const handleTrashFile = async (file) => {
@@ -631,15 +660,21 @@ function Dashboard({ user, logout, theme, setTheme, triggerToast }) {
     }
   };
 
-  const handlePermanentDelete = async (file) => {
-    if (!confirm(`Permanently purge "${file.originalName}"? There is no recovery.`)) return;
-    try {
-      await permanentDeleteFileApi(file._id);
-      triggerToast("Data wiped from servers", "warning");
-      loadData();
-    } catch (error) {
-      triggerToast("Deletion failure", "error");
-    }
+  const handlePermanentDelete = (file) => {
+    setConfirmDialog({
+      title: "Permanent Deletion",
+      message: `Permanently purge "${file.originalName}"? There is no recovery.`,
+      onConfirm: async () => {
+        try {
+          await permanentDeleteFileApi(file._id);
+          triggerToast("Data wiped from servers", "warning");
+          loadData();
+        } catch (error) {
+          triggerToast("Deletion failure", "error");
+        }
+        setConfirmDialog(null);
+      }
+    });
   };
 
   // ─── FOLDER SHARING ───
@@ -667,6 +702,46 @@ function Dashboard({ user, logout, theme, setTheme, triggerToast }) {
     } catch (error) {
       triggerToast("Invite link generation error", "error");
     }
+  };
+
+  // ─── SUBSCRIPTION SYSTEM HANDLERS ───
+  const [showPayModal, setShowPayModal] = useState(false);
+  const [payForm, setPayForm] = useState({ cardName: "", cardNumber: "", cardExpiry: "", cardCvv: "" });
+  const [isPaying, setIsPaying] = useState(false);
+
+  const handleSubscribe = async (e) => {
+    e.preventDefault();
+    setIsPaying(true);
+    try {
+      await subscribeUserApi();
+      triggerToast("Upgrade complete! Welcome to NimbusVault Premium.", "success");
+      setShowPayModal(false);
+      setPayForm({ cardName: "", cardNumber: "", cardExpiry: "", cardCvv: "" });
+      loadData();
+    } catch (error) {
+      console.error(error);
+      triggerToast(error.response?.data?.msg || "Upgrade failed. Check card details.", "error");
+    } finally {
+      setIsPaying(false);
+    }
+  };
+
+  const handleCancelSubscription = () => {
+    setConfirmDialog({
+      title: "Cancel Subscription",
+      message: "Are you sure you want to cancel your Premium subscription? Your limit will return to 15 GB, and your premium features will be locked.",
+      onConfirm: async () => {
+        try {
+          await cancelSubscriptionUserApi();
+          triggerToast("Subscription cancelled. Downgraded to Free Plan.", "warning");
+          loadData();
+        } catch (error) {
+          console.error(error);
+          triggerToast("Cancellation failed", "error");
+        }
+        setConfirmDialog(null);
+      }
+    });
   };
 
   // ─── ANALYTICS CHART CALCULATIONS ───
@@ -740,6 +815,10 @@ function Dashboard({ user, logout, theme, setTheme, triggerToast }) {
             <BarChart3 size={18} />
             Insight Analytics
           </button>
+          <button className={`menu-item ${activeTab === "subscription" ? "active" : ""}`} onClick={() => setActiveTab("subscription")}>
+            <CreditCard size={18} />
+            Premium Plan
+          </button>
           <button className={`menu-item ${activeTab === "activity" ? "active" : ""}`} onClick={() => setActiveTab("activity")}>
             <Clock size={18} />
             Activity log
@@ -754,12 +833,12 @@ function Dashboard({ user, logout, theme, setTheme, triggerToast }) {
         <div className="sidebar-storage">
           <div className="storage-header">
             <span>Occupied Space</span>
-            <span>{Math.round((currentStorageUsed / STORAGE_LIMIT) * 100)}%</span>
+            <span>{Math.min(100, Math.round((currentStorageUsed / storageLimit) * 100))}%</span>
           </div>
           <div className="storage-bar">
-            <div className="storage-bar-progress" style={{ width: `${Math.min(100, (currentStorageUsed / STORAGE_LIMIT) * 100)}%` }}></div>
+            <div className="storage-bar-progress" style={{ width: `${Math.min(100, (currentStorageUsed / storageLimit) * 100)}%` }}></div>
           </div>
-          <span className="storage-meta">{formatSize(currentStorageUsed)} / 15.0 GB</span>
+          <span className="storage-meta">{formatSize(currentStorageUsed)} / {storageLimitGBText}</span>
         </div>
 
         <button className="logout-btn" onClick={logout} id="sidebar-logout-btn">
@@ -776,6 +855,7 @@ function Dashboard({ user, logout, theme, setTheme, triggerToast }) {
               {activeTab === "drive" && (currentFolder ? currentFolder.name : "My Drive")}
               {activeTab === "starred" && "Starred"}
               {activeTab === "insights" && "Storage Insight"}
+              {activeTab === "subscription" && "Premium Plan"}
               {activeTab === "activity" && "Activity"}
               {activeTab === "trash" && "Trash"}
             </h1>
@@ -801,11 +881,16 @@ function Dashboard({ user, logout, theme, setTheme, triggerToast }) {
             {/* Upload Button */}
             {activeTab === "drive" && (
               <div className="upload-button-wrapper">
-                <button className="btn-upload">
+                <button className="btn-upload" onClick={() => fileInputRef.current && fileInputRef.current.click()}>
                   <Upload size={18} />
                   Upload
                 </button>
-                <input type="file" className="upload-input" onChange={handleUpload} id="nimbus-file-injector" />
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  style={{ display: "none" }}
+                  onChange={handleUpload}
+                />
               </div>
             )}
           </div>
@@ -1040,8 +1125,8 @@ function Dashboard({ user, logout, theme, setTheme, triggerToast }) {
               <div className="chart-wrapper">
                 <div className="donut-chart" style={{ background: storageSummaryStats.styleGradient }}>
                   <div className="donut-center">
-                    <span style={{ fontSize: "20px", fontWeight: "800" }}>{Math.round((currentStorageUsed / STORAGE_LIMIT) * 100)}%</span>
-                    <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>OF 15 GB USED</span>
+                    <span style={{ fontSize: "20px", fontWeight: "800" }}>{Math.min(100, Math.round((currentStorageUsed / storageLimit) * 100))}%</span>
+                    <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>OF {user?.isSubscribed ? "100" : "15"} GB USED</span>
                   </div>
                 </div>
               </div>
@@ -1076,6 +1161,75 @@ function Dashboard({ user, logout, theme, setTheme, triggerToast }) {
                   <p style={{ color: "var(--text-muted)", fontSize: "13px" }}>No files uploaded yet.</p>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── SUBSCRIPTION / PREMIUM PLAN TAB ─── */}
+        {activeTab === "subscription" && (
+          <div className="subscription-section">
+            <div className="plan-cards-row">
+              {/* Free Plan Card */}
+              <div className="plan-card">
+                <h3 style={{ fontSize: "18px", marginBottom: "8px" }}>Free Plan</h3>
+                <div className="plan-price">$0 <span>/ forever</span></div>
+                <ul className="plan-features">
+                  <li><Check size={16} /> 15 GB secure storage</li>
+                  <li><Check size={16} /> File encryption</li>
+                  <li><Check size={16} /> Share & collaborate</li>
+                  <li><Check size={16} /> Activity tracking</li>
+                </ul>
+                {!user?.isSubscribed ? (
+                  <div className="current-plan-badge">
+                    <Check size={16} /> Current Plan
+                  </div>
+                ) : (
+                  <span style={{ fontSize: "13px", color: "var(--text-muted)", display: "block", textAlign: "center" }}>Basic tier</span>
+                )}
+              </div>
+
+              {/* Premium Plan Card */}
+              <div className="plan-card premium">
+                <div className="plan-badge"><Crown size={12} /> Premium</div>
+                <h3 style={{ fontSize: "18px", marginBottom: "8px" }}>NimbusVault Pro</h3>
+                <div className="plan-price">$9.99 <span>/ month</span></div>
+                <ul className="plan-features">
+                  <li><Check size={16} /> 100 GB secure storage</li>
+                  <li><Check size={16} /> Priority encrypted uploads</li>
+                  <li><Check size={16} /> Advanced sharing controls</li>
+                  <li><Check size={16} /> Priority support</li>
+                  <li><Check size={16} /> Early access to features</li>
+                </ul>
+                {user?.isSubscribed ? (
+                  <>
+                    <div className="current-plan-badge" style={{ marginBottom: "12px" }}>
+                      <Crown size={16} /> Active Premium
+                    </div>
+                    <button className="btn-secondary" style={{ marginTop: "8px", color: "var(--danger)" }} onClick={handleCancelSubscription}>
+                      Cancel Subscription
+                    </button>
+                  </>
+                ) : (
+                  <button className="btn-primary" onClick={() => setShowPayModal(true)} id="upgrade-premium-btn">
+                    <Crown size={16} /> Upgrade Now
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Usage summary */}
+            <div className="analytics-card">
+              <h3 style={{ marginBottom: "16px" }}>Current Usage</h3>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                <span style={{ fontSize: "14px" }}>Storage Used</span>
+                <span style={{ fontWeight: "700" }}>{formatSize(currentStorageUsed)} / {storageLimitGBText}</span>
+              </div>
+              <div className="storage-bar" style={{ height: "10px", borderRadius: "5px" }}>
+                <div className="storage-bar-progress" style={{ width: `${Math.min(100, (currentStorageUsed / storageLimit) * 100)}%`, borderRadius: "5px" }}></div>
+              </div>
+              <span style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "8px", display: "block" }}>
+                {Math.min(100, Math.round((currentStorageUsed / storageLimit) * 100))}% of your {user?.isSubscribed ? "Premium" : "Free"} storage used
+              </span>
             </div>
           </div>
         )}
@@ -1149,9 +1303,9 @@ function Dashboard({ user, logout, theme, setTheme, triggerToast }) {
           <BarChart3 size={20} />
           <span>Insight</span>
         </button>
-        <button className={`mobile-nav-item ${activeTab === "activity" ? "active" : ""}`} onClick={() => setActiveTab("activity")}>
-          <Clock size={20} />
-          <span>Log</span>
+        <button className={`mobile-nav-item ${activeTab === "subscription" ? "active" : ""}`} onClick={() => setActiveTab("subscription")}>
+          <CreditCard size={20} />
+          <span>Plan</span>
         </button>
         <button className={`mobile-nav-item ${activeTab === "trash" ? "active" : ""}`} onClick={() => setActiveTab("trash")}>
           <Trash2 size={20} />
@@ -1454,6 +1608,122 @@ function Dashboard({ user, logout, theme, setTheme, triggerToast }) {
           </div>
         </div>
       )}
+
+      {/* CUSTOM CONFIRM DIALOG (replaces native confirm()) */}
+      {confirmDialog && (
+        <div className="modal-backdrop" onClick={() => setConfirmDialog(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>{confirmDialog.title}</h2>
+            <p className="confirm-dialog-body">{confirmDialog.message}</p>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setConfirmDialog(null)}>
+                Cancel
+              </button>
+              <button className="btn-primary" style={{ background: "var(--danger)", boxShadow: "0 4px 15px rgba(239, 68, 68, 0.3)" }} onClick={confirmDialog.onConfirm}>
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM RENAME MODAL (replaces native prompt()) */}
+      {renameModal && (
+        <div className="modal-backdrop" onClick={() => setRenameModal(null)}>
+          <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); handleRenameSubmit(); }}>
+            <h2>Rename File</h2>
+            <input
+              className="rename-modal-input"
+              autoFocus
+              value={renameModal.newName}
+              onChange={(e) => setRenameModal({ ...renameModal, newName: e.target.value })}
+              placeholder="Enter new filename..."
+            />
+            <div className="modal-footer">
+              <button className="btn-secondary" type="button" onClick={() => setRenameModal(null)}>
+                Cancel
+              </button>
+              <button className="btn-primary" type="submit">
+                Rename
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* PAYMENT / UPGRADE MODAL */}
+      {showPayModal && (
+        <div className="modal-backdrop" onClick={() => setShowPayModal(false)}>
+          <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={handleSubscribe}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px" }}>
+              <div className="logo-icon" style={{ padding: "8px" }}>
+                <Crown size={20} />
+              </div>
+              <h2>Upgrade to Premium</h2>
+            </div>
+            <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+              Enter your payment details to unlock 100 GB storage and premium features.
+            </p>
+
+            <div className="payment-form-grid">
+              <div className="input-group">
+                <label className="input-label" htmlFor="pay-card-name">Cardholder Name</label>
+                <input
+                  id="pay-card-name"
+                  className="input-field"
+                  placeholder="John Doe"
+                  value={payForm.cardName}
+                  onChange={(e) => setPayForm({ ...payForm, cardName: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label" htmlFor="pay-card-number">Card Number</label>
+                <input
+                  id="pay-card-number"
+                  className="input-field"
+                  placeholder="4242 4242 4242 4242"
+                  value={payForm.cardNumber}
+                  onChange={(e) => setPayForm({ ...payForm, cardNumber: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label" htmlFor="pay-card-expiry">Expiry</label>
+                <input
+                  id="pay-card-expiry"
+                  className="input-field"
+                  placeholder="MM/YY"
+                  value={payForm.cardExpiry}
+                  onChange={(e) => setPayForm({ ...payForm, cardExpiry: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label" htmlFor="pay-card-cvv">CVV</label>
+                <input
+                  id="pay-card-cvv"
+                  className="input-field"
+                  placeholder="123"
+                  type="password"
+                  value={payForm.cardCvv}
+                  onChange={(e) => setPayForm({ ...payForm, cardCvv: e.target.value })}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn-secondary" type="button" onClick={() => setShowPayModal(false)}>
+                Cancel
+              </button>
+              <button className="btn-primary" type="submit" disabled={isPaying}>
+                {isPaying ? "Processing..." : "Pay $9.99/mo"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
@@ -1489,7 +1759,7 @@ function PublicFolderView({ token, theme, setTheme }) {
       link.click();
       link.remove();
     } catch (err) {
-      alert("Failed to download resource. It might be password protected.");
+      setError("Failed to download resource. It might be password protected.");
     }
   };
 

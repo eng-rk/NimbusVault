@@ -20,6 +20,9 @@ api.interceptors.request.use((config) => {
 // Authentication Endpoints
 export const registerUser = (data) => api.post("/auth/register", data);
 export const loginUser = (data) => api.post("/auth/login", data);
+export const fetchUserProfileApi = () => api.get("/auth/me");
+export const subscribeUserApi = () => api.post("/auth/subscribe");
+export const cancelSubscriptionUserApi = () => api.post("/auth/cancel-subscription");
 
 // Files Endpoints
 export const fetchFiles = (params) => api.get("/files", { params });

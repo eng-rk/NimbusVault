@@ -463,7 +463,6 @@ button {
 
 .upload-button-wrapper {
   position: relative;
-  overflow: hidden;
 }
 
 .upload-input {
@@ -1258,12 +1257,222 @@ button {
   color: var(--text-main);
 }
 
+/* --- Modal Overlay System --- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: fadeIn 0.2s ease forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+  position: relative;
+  animation: modalSlideUp 0.25s ease forwards;
+}
+
+@keyframes modalSlideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.modal h2 {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* --- Confirm Dialog --- */
+.confirm-dialog-body {
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* --- Rename Inline Input Modal --- */
+.rename-modal-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  outline: none;
+  margin-top: 16px;
+  transition: var(--transition-smooth);
+  font-size: 14px;
+}
+
+.rename-modal-input:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+}
+
 /* Modal details */
 .modal-footer {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
   margin-top: 24px;
+}
+
+.modal-footer .btn-primary,
+.modal-footer .btn-secondary {
+  width: auto;
+  padding: 10px 22px;
+  font-size: 14px;
+}
+
+/* --- Subscription / Premium Plan Tab --- */
+.subscription-section {
+  max-width: 800px;
+}
+
+.plan-cards-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+@media (max-width: 650px) {
+  .plan-cards-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.plan-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  position: relative;
+  transition: var(--transition-smooth);
+}
+
+.plan-card:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.plan-card.premium {
+  border-color: rgba(108, 99, 255, 0.4);
+  background: var(--gradient-glow);
+}
+
+.plan-card.premium::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--gradient-primary);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.plan-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(108, 99, 255, 0.15);
+  color: var(--primary);
+  padding: 4px 12px;
+  border-radius: 50px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 16px;
+}
+
+.plan-price {
+  font-size: 36px;
+  font-weight: 800;
+  font-family: var(--font-title);
+  margin-bottom: 4px;
+}
+
+.plan-price span {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.plan-features {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 24px 0;
+}
+
+.plan-features li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.plan-features li svg {
+  color: var(--success);
+  flex-shrink: 0;
+}
+
+.current-plan-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--success);
+  padding: 8px 18px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 700;
+  width: 100%;
+  justify-content: center;
+}
+
+/* Payment form card */
+.payment-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.payment-form-grid .input-group:first-child,
+.payment-form-grid .input-group:nth-child(2) {
+  grid-column: span 2;
+}
+
+@media (max-width: 500px) {
+  .payment-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .payment-form-grid .input-group:first-child,
+  .payment-form-grid .input-group:nth-child(2) {
+    grid-column: span 1;
+  }
 }
 
 .modal-input-grid {
